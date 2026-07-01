@@ -1,0 +1,55 @@
+name: release
+
+# A merge to main that bumps VERSION is a release: this workflow tags the commit
+# v<VERSION>, then GoReleaser builds the cross-platform binaries, publishes a
+# GitHub Release, and updates the Homebrew formula in dbaggott/homebrew-tap.
+# Pushes that don't change VERSION find the tag already present and no-op.
+#
+# TAP_GITHUB_TOKEN must be a PAT with write access to dbaggott/homebrew-tap
+# (GITHUB_TOKEN cannot push to another repo).
+
+on:
+  push:
+    branches: [main]
+    paths: ['VERSION']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag the release if VERSION is new
+        id: tag
+        run: |
+          version="$(cat VERSION)"
+          tag="v$version"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists; nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            git tag "$tag"
+            git push origin "$tag"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.tag.outputs.release == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: goreleaser/goreleaser-action@v6
+        if: steps.tag.outputs.release == 'true'
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

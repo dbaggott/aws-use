@@ -1,0 +1,47 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: aws-use
+    main: .
+    binary: aws-use
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/dbaggott/aws-use/internal/cli.Version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+
+# Publishes/updates the Homebrew formula in dbaggott/homebrew-tap on each
+# release. Requires a TAP_GITHUB_TOKEN secret (a PAT with write access to the
+# tap repo) in the release workflow — GITHUB_TOKEN can't push to another repo.
+brews:
+  - name: aws-use
+    repository:
+      owner: dbaggott
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/dbaggott/aws-use
+    description: Switch AWS SSO accounts/roles fast across multiple SSO sessions
+    license: MIT
+    install: |
+      bin.install "aws-use"
+    test: |
+      system "#{bin}/aws-use", "version"
+    caveats: |
+      Add the shell hook so `aws-use` can switch your current shell:
+        eval "$(aws-use shellenv)"
