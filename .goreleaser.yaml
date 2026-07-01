@@ -44,5 +44,10 @@ brews:
     test: |
       system "#{bin}/aws-use", "version"
     caveats: |
-      Add the shell hook so `aws-use` can switch your current shell:
-        eval "$(aws-use shellenv)"
+      aws-use switches your shell's AWS profile, so it needs a shell hook.
+      Add this to your shell startup file, then restart your shell:
+
+        ~/.zshrc or ~/.bashrc:  eval "$(aws-use shellenv)"
+
+      Without the hook, `aws-use` prints the profile it picked but can't set
+      AWS_PROFILE in your current shell.

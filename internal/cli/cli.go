@@ -136,15 +136,21 @@ func runUse(ctx context.Context, query []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "→ %s (%s / %s)\n", name, ar.AccountName, ar.RoleName)
-	fmt.Printf("export AWS_PROFILE=%s\n", name)
 
-	// When stdout is a terminal, the export line wasn't captured by the shell
-	// hook (which pipes stdout), so the switch had no effect on the shell. Nudge
-	// the user toward the hook instead of leaving them puzzled.
+	// The shell hook captures stdout via command substitution, so a piped stdout
+	// means we're running under the hook: print only the export line for it to
+	// eval. A terminal stdout means we were run directly — the export would have
+	// no effect on the shell, so suppress that noise and guide the user to the
+	// hook (which self-suppresses this branch once set up). The profile is
+	// already written either way, so offer the manual export as a fallback.
 	if isatty.IsTerminal(os.Stdout.Fd()) {
-		fmt.Fprintln(os.Stderr, "note: AWS_PROFILE was printed, not applied — run via the shell hook to switch your shell:")
-		fmt.Fprintln(os.Stderr, `      eval "$(aws-use shellenv)"   # once in your shell rc, then run: aws-use`)
+		fmt.Fprintln(os.Stderr, "aws-use: shell not switched — set up the shell hook once to enable switching:")
+		fmt.Fprintln(os.Stderr, `  add to ~/.zshrc or ~/.bashrc:  eval "$(aws-use shellenv)"`)
+		fmt.Fprintln(os.Stderr, "  then re-run: aws-use")
+		fmt.Fprintf(os.Stderr, "  (or set it now: export AWS_PROFILE=%s)\n", name)
+		return nil
 	}
+	fmt.Printf("export AWS_PROFILE=%s\n", name)
 	return nil
 }
 
