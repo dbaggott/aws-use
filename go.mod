@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.22.4
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.4
 	github.com/charmbracelet/huh v0.5.3
+	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.8.1
 	gopkg.in/ini.v1 v1.67.0
 )
@@ -28,7 +29,6 @@ require (
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect

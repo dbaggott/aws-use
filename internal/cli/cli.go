@@ -11,6 +11,7 @@ import (
 
 	"github.com/dbaggott/aws-use/internal/awsconfig"
 	"github.com/dbaggott/aws-use/internal/sso"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -136,6 +137,14 @@ func runUse(ctx context.Context, query []string) error {
 
 	fmt.Fprintf(os.Stderr, "→ %s (%s / %s)\n", name, ar.AccountName, ar.RoleName)
 	fmt.Printf("export AWS_PROFILE=%s\n", name)
+
+	// When stdout is a terminal, the export line wasn't captured by the shell
+	// hook (which pipes stdout), so the switch had no effect on the shell. Nudge
+	// the user toward the hook instead of leaving them puzzled.
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		fmt.Fprintln(os.Stderr, "note: AWS_PROFILE was printed, not applied — run via the shell hook to switch your shell:")
+		fmt.Fprintln(os.Stderr, `      eval "$(aws-use shellenv)"   # once in your shell rc, then run: aws-use`)
+	}
 	return nil
 }
 
