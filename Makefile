@@ -4,10 +4,10 @@ PKG     := github.com/dbaggott/aws-use/internal/cli
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION)
 PREFIX  ?= $(HOME)/.local
 
-.PHONY: build install uninstall test lint fmt clean help
+.PHONY: build install uninstall test lint shelltest fmt clean help
 
 help:
-	@echo "Targets: build install uninstall test lint fmt clean"
+	@echo "Targets: build install uninstall test lint shelltest fmt clean"
 	@echo "  install honors PREFIX (default: $(HOME)/.local) -> PREFIX/bin/$(BINARY)"
 
 build:
@@ -23,13 +23,16 @@ uninstall:
 	@echo "Removed $(PREFIX)/bin/$(BINARY)"
 
 test:
-	go vet ./...
-	@test -z "$$(gofmt -l . )" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
-	go test ./...
+	go test -race -cover ./...
 
 lint:
-	go vet ./...
-	gofmt -l .
+	golangci-lint run ./...
+	@test -z "$$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
+
+# Exercise the shellenv hook under every shell we support (bash 3.2 + zsh).
+shelltest: build
+	bash test/shell_hook.sh ./$(BINARY)
+	@if command -v zsh >/dev/null; then zsh test/shell_hook.sh ./$(BINARY); else echo "(zsh not present, skipping)"; fi
 
 fmt:
 	gofmt -w .

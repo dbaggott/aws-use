@@ -1,0 +1,7 @@
+version: "2"
+
+# Keeps the default linters (errcheck, govet, ineffassign, staticcheck, unused)
+# and adds misspell for typos in comments/strings.
+linters:
+  enable:
+    - misspell

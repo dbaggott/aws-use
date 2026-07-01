@@ -68,7 +68,7 @@ func newRoot() *cobra.Command {
 			Use:   "shellenv",
 			Short: "Print the shell hook to eval from your shell rc",
 			Args:  cobra.NoArgs,
-			RunE:  func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook); return nil },
+			RunE:  func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook()); return nil },
 		},
 		&cobra.Command{
 			Use:   "version",

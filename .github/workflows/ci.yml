@@ -6,6 +6,23 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+      - name: Lint
+        run: |
+          "$(go env GOPATH)/bin/golangci-lint" run ./...
+          test -z "$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -18,3 +35,21 @@ jobs:
       - run: make build
       - name: Smoke test
         run: ./aws-use version
+
+  # The shellenv hook must work on macOS's stock bash (3.2, the oldest we
+  # support) and zsh. macos-latest ships both.
+  shell:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make build
+      - name: Confirm stock bash is 3.2
+        run: /bin/bash --version | grep -F 'version 3.2'
+      - name: Hook under bash 3.2
+        run: /bin/bash test/shell_hook.sh ./aws-use
+      - name: Hook under zsh
+        run: zsh test/shell_hook.sh ./aws-use
