@@ -195,9 +195,11 @@ func runLs(ctx context.Context) error {
 		}
 	}
 
-	// Offer to log in to the sessions we can't list yet — but only when stdin is
-	// a terminal, so a piped/scripted `ls` never blocks on a prompt.
-	if len(missing) > 0 && isatty.IsTerminal(os.Stdin.Fd()) {
+	// Offer to log in to the sessions we can't list yet — but only in a fully
+	// interactive terminal (both stdin and stdout are TTYs). That way a piped or
+	// redirected `ls` in either direction (`ls | grep`, `ls > file`, scripted)
+	// never blocks on or is surprised by a prompt.
+	if len(missing) > 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd()) {
 		names := make([]string, len(missing))
 		for i, s := range missing {
 			names[i] = s.Name
