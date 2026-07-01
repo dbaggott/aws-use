@@ -26,7 +26,10 @@ It's a self-contained Go binary — no `aws` CLI or `jq` dependency. Discovery
 calls `sso:ListAccounts` / `sso:ListAccountRoles` with your cached SSO token, so
 you never pre-create profiles by hand. For the account/role you pick, `aws-use`
 ensures an SSO-backed `[profile …]` block exists in `~/.aws/config` (so it
-auto-refreshes and works with Terraform) and then sets `AWS_PROFILE`. Login uses
+auto-refreshes and works with Terraform) and then sets `AWS_PROFILE`. It
+*selects* the account/role — it doesn't assume the role or fetch credentials
+itself; your AWS CLI, SDKs, and Terraform resolve those from the profile on
+demand. Login uses
 the device-authorization flow and writes the **same** `~/.aws/sso/cache` token
 the AWS CLI uses, so a session you log in here is reused everywhere — and vice
 versa.

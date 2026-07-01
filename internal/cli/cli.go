@@ -41,9 +41,11 @@ have more than one), then an account and role, and it sets AWS_PROFILE in your
 current shell. Add filter words to narrow the list or jump straight to a match —
 they match against session, account, and role names.
 
-aws-use discovers everything you can assume (no pre-made profiles needed), writes
-the ~/.aws/config profile for you, and signs you in automatically when a
-session's token has expired.
+aws-use discovers everything you can assume (no pre-made profiles needed) and
+writes the ~/.aws/config profile for you. It *selects* the account/role by
+setting AWS_PROFILE to that SSO-backed profile — it does not assume the role or
+fetch credentials itself; your AWS CLI, SDKs, and Terraform resolve those from
+the profile on demand (signing you in automatically when the token has expired).
 
 Requires the shell hook, added once to your ~/.zshrc or ~/.bashrc:
   eval "$(aws-use shellenv)"
@@ -66,7 +68,7 @@ Without it, aws-use prints the profile it picked but can't change your shell.`,
 
 	root.AddGroup(
 		&cobra.Group{ID: "core", Title: "Commands:"},
-		&cobra.Group{ID: "setup", Title: "Setup & auth:"},
+		&cobra.Group{ID: "auth", Title: "Authentication:"},
 	)
 
 	root.AddCommand(
@@ -100,18 +102,19 @@ Without it, aws-use prints the profile it picked but can't change your shell.`,
 
 You rarely need this: switching logs in automatically, and "ls" offers to log in
 when needed. It's mainly for pre-authenticating or scripting.`,
-			GroupID: "setup",
+			GroupID: "auth",
 			Args:    cobra.MaximumNArgs(1),
 			RunE:    func(cmd *cobra.Command, args []string) error { return runLogin(cmd.Context(), args) },
 		},
 		// Hidden from help/completion (still runnable): setup you do once, and the
 		// hook is already documented in the long description, README, and caveats.
 		&cobra.Command{
-			Use:    "shellenv",
-			Short:  "Print the shell hook to add to your shell rc",
-			Hidden: true,
-			Args:   cobra.NoArgs,
-			RunE:   func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook()); return nil },
+			Use:     "shellenv",
+			Short:   "Print the shell hook to add to your shell rc",
+			Hidden:  true,
+			GroupID: "auth",
+			Args:    cobra.NoArgs,
+			RunE:    func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook()); return nil },
 		},
 		// Hidden from help/completion (still runnable): the --version flag covers it.
 		&cobra.Command{
