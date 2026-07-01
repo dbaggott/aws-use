@@ -5,7 +5,7 @@
 #
 # Effects last only in this shell; open a new terminal to return to the
 # installed aws-use.
-# shellcheck disable=SC1090
+# shellcheck shell=bash disable=SC1090
 if make build; then
   eval "$(./aws-use shellenv)"
   case "${ZSH_VERSION:+zsh}${BASH_VERSION:+bash}" in

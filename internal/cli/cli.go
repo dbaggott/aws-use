@@ -327,7 +327,7 @@ func runCurrent(ctx context.Context) error {
 
 	// The account name only comes from a live ListAccounts call. Best-effort:
 	// skip the network when the token isn't valid, so `current` still works
-	// offline and reports expiry (the row shows "-" for the name then).
+	// offline and reports expiry (the account column shows just the id then).
 	account := ""
 	if token, valid := sso.ValidToken(info.SSOSession); valid {
 		_ = spin("checking "+info.SSOSession, func() error {
