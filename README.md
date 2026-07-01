@@ -30,9 +30,12 @@ auto-refreshes and works with Terraform) and then sets `AWS_PROFILE`. It
 *selects* the account/role — it doesn't assume the role or fetch credentials
 itself; your AWS CLI, SDKs, and Terraform resolve those from the profile on
 demand. Login uses
-the device-authorization flow and writes the **same** `~/.aws/sso/cache` token
-the AWS CLI uses, so a session you log in here is reused everywhere — and vice
-versa.
+the authorization-code + PKCE flow (like `aws sso login`) and writes the **same**
+`~/.aws/sso/cache` token the AWS CLI uses, so a session you log in here is reused
+everywhere — and the refresh token means it renews silently until the session
+lapses, rather than re-prompting the browser. (Set `AWS_USE_DEVICE_AUTH=1` for
+the device-authorization flow instead, for headless/remote shells with no local
+browser.)
 
 Setting `AWS_PROFILE` in your shell is why the shell hook is required: only code
 running *in* your shell can change its environment, so the hook `eval`s the
@@ -49,6 +52,7 @@ session, e.g. `dnbg`).
 |---|---|
 | `~/.aws/config` `[sso-session …]` blocks | The SSO sessions `aws-use` discovers and switches between |
 | `AWS_USE_PROFILE_TEMPLATE` | Generated profile-name template. Default `{account}-{role}`; tokens: `{session}`, `{account}`, `{role}` |
+| `AWS_USE_DEVICE_AUTH` | If set, log in with the device-authorization flow (open the URL on any device) instead of the default local-browser PKCE flow — for headless/remote shells |
 
 ## Install
 
