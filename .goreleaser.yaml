@@ -31,6 +31,7 @@ changelog:
 # tap repo) in the release workflow — GITHUB_TOKEN can't push to another repo.
 brews:
   - name: aws-use
+    directory: Formula
     repository:
       owner: dbaggott
       name: homebrew-tap

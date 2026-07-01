@@ -1,9 +1,9 @@
 # aws-use
 
-Switch AWS IAM Identity Center (SSO) accounts and roles fast. `aws-use`
-discovers every account/role you can assume — across **multiple SSO sessions**
-(e.g. work and personal) — lets you pick one, manages the `~/.aws/config`
-profile for it, and sets `AWS_PROFILE` in your current shell.
+Switch AWS IAM Identity Center (SSO) accounts and roles fast — across **multiple
+SSO sessions** (e.g. work and personal). `aws-use` discovers every account/role
+you can assume, lets you pick one, manages the `~/.aws/config` profile for it,
+and sets `AWS_PROFILE` in your current shell.
 
 ```
 $ aws-use
@@ -13,71 +13,103 @@ $ aws-use
 
 $ aws-use dnbg ops admin        # fuzzy: jump straight to a match
 → dnbg-operations-AdministratorAccess (dnbg-operations / AdministratorAccess)
+
+$ aws-use ls                    # everything you can assume, across sessions
+dnbg      dnbg-management       626716204703    AdministratorAccess
+dnbg      dnbg-operations       224850139999    AdministratorAccess
+work      acme-prod             111111111111    ReadOnlyAccess
 ```
 
-It's a self-contained Go binary — no `aws` CLI or `jq` dependency. Logins and
-the token cache are written in the same format the AWS CLI and Terraform read,
-so a session you log in here is reused everywhere (and vice versa).
+It's a self-contained Go binary — no `aws` CLI or `jq` dependency. Discovery
+calls `sso:ListAccounts` / `sso:ListAccountRoles` with your cached SSO token, so
+you never pre-create profiles by hand. For the account/role you pick, `aws-use`
+ensures an SSO-backed `[profile …]` block exists in `~/.aws/config` (so it
+auto-refreshes and works with Terraform) and then sets `AWS_PROFILE`. Login uses
+the device-authorization flow and writes the **same** `~/.aws/sso/cache` token
+the AWS CLI uses, so a session you log in here is reused everywhere — and vice
+versa.
+
+Setting `AWS_PROFILE` in your shell is why the shell hook is required: only code
+running *in* your shell can change its environment, so the hook `eval`s the
+export `aws-use` prints (the same reason `aws sso login` alone can't switch you).
+
+## Configuration
+
+`aws-use` reads your existing `[sso-session …]` blocks from `~/.aws/config` —
+multiple SSO orgs simply means multiple blocks, and `aws-use` spans them all. If
+you have none yet, create one per portal with `aws configure sso` (name the
+session, e.g. `dnbg`).
+
+| Setting | Effect |
+|---|---|
+| `~/.aws/config` `[sso-session …]` blocks | The SSO sessions `aws-use` discovers and switches between |
+| `AWS_USE_PROFILE_TEMPLATE` | Generated profile-name template. Default `{account}-{role}`; tokens: `{session}`, `{account}`, `{role}` |
 
 ## Install
 
-**Homebrew:**
-```bash
-brew install dbaggott/tap/aws-use
+Pick one. Homebrew installs the latest [release](https://github.com/dbaggott/aws-use/releases); from source builds whatever you have checked out. **After installing, add the shell hook** (below) — the tool can't switch your shell without it.
+
+### Homebrew (recommended on macOS)
+
+```sh
+brew tap dbaggott/tap
+brew install aws-use
 ```
 
-**From source:**
-```bash
-go install github.com/dbaggott/aws-use@latest   # or: make install
+### go install
+
+```sh
+go install github.com/dbaggott/aws-use@latest
 ```
 
-Then add the shell hook to your `~/.zshrc` / `~/.bashrc` — required, because only
-code running *in your shell* can change `AWS_PROFILE`:
-```bash
+### From source
+
+```sh
+git clone https://github.com/dbaggott/aws-use.git
+cd aws-use
+make install                        # installs to ~/.local/bin
+# or: make install PREFIX=/usr/local
+```
+
+### Shell hook (required)
+
+Add to your `~/.zshrc` or `~/.bashrc`:
+
+```sh
 eval "$(aws-use shellenv)"
 ```
 
-## Setup
-
-`aws-use` reads your existing `[sso-session …]` blocks from `~/.aws/config` —
-nothing else to configure. If you don't have any yet, create one per SSO portal:
-```bash
-aws configure sso        # name the session, e.g. "dnbg"
-```
-Multiple SSO orgs = multiple `[sso-session …]` blocks. `aws-use` spans them all.
-
 ## Usage
 
-| Command | What it does |
+```
+aws-use [query…]
+```
+
+| Command | Effect |
 |---|---|
-| `aws-use` | Pick session → account → role, set `AWS_PROFILE`. |
-| `aws-use <query…>` | Same, but fuzzy-filtered (e.g. `aws-use dnbg admin`). A query word matching a session name selects it. |
-| `aws-use ls` | List every account/role across logged-in sessions. |
-| `aws-use login [session]` | Log in to a session (refresh its token). |
-| `aws-use current` | Print the active `AWS_PROFILE`. |
-| `aws-use shellenv` | Print the shell hook. |
+| `aws-use` | Pick session → account → role, then set `AWS_PROFILE` |
+| `aws-use <query…>` | Same, fuzzy-filtered (`aws-use dnbg admin`); a word matching a session name selects it |
+| `aws-use ls` | List every account/role across logged-in sessions |
+| `aws-use login [session]` | Log in to a session (refresh its token) |
+| `aws-use current` | Print the active `AWS_PROFILE` |
+| `aws-use shellenv` | Print the shell hook |
+| `aws-use version` | Print the version |
 
-If a session's token is missing or expired, the switch flow logs you in
-automatically (browser device-authorization flow).
+If a session's token is missing or expired, the switch flow logs you in first
+(browser device-authorization flow).
 
-## How it works
+## Releasing
 
-- **Discovery:** calls `sso:ListAccounts` / `sso:ListAccountRoles` with your
-  cached SSO token — no pre-created profiles needed.
-- **Profiles:** for the account/role you pick, it ensures a `[profile …]` block
-  exists in `~/.aws/config` (SSO-backed, so it auto-refreshes and works with
-  Terraform), then exports `AWS_PROFILE`. Profile names follow
-  `{account}-{role}` by default; override with `AWS_USE_PROFILE_TEMPLATE`
-  (tokens: `{session}`, `{account}`, `{role}`).
-- **Token cache:** login writes `~/.aws/sso/cache/<sha1(session)>.json` — the
-  exact file the AWS CLI and SDKs use, so sessions are shared, not duplicated.
+Bump `VERSION` and merge to main. CI tags the commit `v<VERSION>`, publishes a
+GitHub Release with cross-compiled binaries, and updates the Homebrew tap formula
+— merging the bump is the whole release.
 
-## Status
+## Requirements
 
-v0. The core (multi-session discovery, profile management, shell switching) is
-in place. The device-authorization login does not yet refresh tokens silently
-on expiry in every case — re-run `aws-use login <session>` if a token lapses.
+A configured AWS IAM Identity Center (SSO) session in `~/.aws/config`, and
+`bash` 3.2+ or `zsh` for the shell hook (macOS ships both). No `aws` CLI or `jq`
+required.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
