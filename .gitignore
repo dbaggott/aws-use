@@ -1,0 +1,14 @@
+# Build output
+/dist/
+/aws-use
+/awsuse
+
+# Go
+*.test
+*.out
+
+# Editor / OS
+.DS_Store
+
+# Git worktrees
+.worktrees/
