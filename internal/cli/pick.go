@@ -24,6 +24,21 @@ func pickOne(title string, options []string) (string, error) {
 	return choice, err
 }
 
+// pickMulti shows a multi-select over options and returns the chosen ones.
+func pickMulti(title string, options []string) ([]string, error) {
+	var chosen []string
+	opts := make([]huh.Option[string], len(options))
+	for i, o := range options {
+		opts[i] = huh.NewOption(o, o)
+	}
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewMultiSelect[string]().Title(title).Options(opts...).Value(&chosen),
+		),
+	).WithOutput(os.Stderr).Run()
+	return chosen, err
+}
+
 // pickRoles shows a single-select over account/role pairs and returns the chosen
 // one (as a one-element slice, so callers can treat picked and unambiguous cases
 // the same).

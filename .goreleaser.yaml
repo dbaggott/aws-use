@@ -41,6 +41,7 @@ brews:
     license: MIT
     install: |
       bin.install "aws-use"
+      generate_completions_from_executable(bin/"aws-use", "completion")
     test: |
       system "#{bin}/aws-use", "version"
     caveats: |
