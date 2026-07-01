@@ -188,6 +188,7 @@ func runUse(ctx context.Context, query []string) error {
 		return err
 	}
 
+	fmt.Fprint(os.Stderr, rowHeader())
 	fmt.Fprint(os.Stderr, rowLine(true, session.Name, ar.AccountName, ar.AccountID, ar.RoleName))
 
 	// The shell hook captures stdout via command substitution, so a piped stdout
@@ -284,7 +285,7 @@ func runLs(ctx context.Context) error {
 	// with its session's token expiry.
 	active := os.Getenv("AWS_PROFILE")
 	if len(rows) > 0 {
-		fmt.Printf(rowFormat, " ", "SESSION", "ACCOUNT", "ACCOUNT ID", "ROLE", "")
+		fmt.Print(rowHeader())
 	}
 	for _, r := range rows {
 		isActive := active != "" && profileName(awsconfig.SSOSession{Name: r.Session}, r) == active
@@ -335,6 +336,7 @@ func runCurrent(ctx context.Context) error {
 			return err
 		})
 	}
+	fmt.Print(rowHeader())
 	fmt.Print(rowLine(true, info.SSOSession, account, info.AccountID, info.RoleName))
 	return nil
 }
@@ -364,8 +366,22 @@ func spin(title string, fn func() error) error {
 }
 
 // rowFormat is the shared column layout used by `ls`, `current`, and the switch
-// confirmation: marker, session, account, account id, role, note.
-const rowFormat = "%s %-10s  %-24s  %-14s  %s%s\n"
+// confirmation: marker, session, account, role, note.
+const rowFormat = "%s %-10s  %-36s  %s%s\n"
+
+// rowHeader is the column header printed above every row-format output.
+func rowHeader() string {
+	return fmt.Sprintf(rowFormat, " ", "SESSION", "ACCOUNT", "ROLE", "")
+}
+
+// accountCell combines the account name and id into one column — "name (id)", or
+// just "id" when the name isn't known (e.g. offline `current`).
+func accountCell(name, id string) string {
+	if name == "" {
+		return id
+	}
+	return name + " (" + id + ")"
+}
 
 // expiryNote renders the parenthetical token-status suffix for a session.
 func expiryNote(session string) string {
@@ -380,16 +396,13 @@ func expiryNote(session string) string {
 }
 
 // rowLine renders one account/role line. The active row gets a "*" marker and an
-// expiry note; a blank account name renders as "-".
-func rowLine(active bool, session, account, accountID, role string) string {
+// expiry note.
+func rowLine(active bool, session, accountName, accountID, role string) string {
 	marker, note := " ", ""
 	if active {
 		marker, note = "*", expiryNote(session)
 	}
-	if account == "" {
-		account = "-"
-	}
-	return fmt.Sprintf(rowFormat, marker, session, account, accountID, role, note)
+	return fmt.Sprintf(rowFormat, marker, session, accountCell(accountName, accountID), role, note)
 }
 
 // sortRoles orders account/roles by session, then account name, then role — the
