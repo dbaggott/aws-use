@@ -55,6 +55,17 @@ func TestSSOSessions(t *testing.T) {
 	}
 }
 
+func TestProfileInfo(t *testing.T) {
+	writeConfig(t, sample)
+	p, ok := ProfileInfo("existing")
+	if !ok || p.SSOSession != "dnbg" || p.AccountID != "111111111111" || p.RoleName != "AdministratorAccess" {
+		t.Errorf("ProfileInfo(existing) = %+v, %v", p, ok)
+	}
+	if _, ok := ProfileInfo("nope"); ok {
+		t.Error("nonexistent profile should not resolve")
+	}
+}
+
 func TestEnsureProfileCreatesAndIsIdempotent(t *testing.T) {
 	path := writeConfig(t, sample)
 

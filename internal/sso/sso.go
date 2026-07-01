@@ -83,6 +83,24 @@ func ValidToken(sessionName string) (string, bool) {
 	return t.AccessToken, true
 }
 
+// TokenExpiry returns the cached token's expiry for a session and whether a
+// parseable token cache file exists (regardless of whether it's still valid).
+func TokenExpiry(sessionName string) (time.Time, bool) {
+	b, err := os.ReadFile(cachePath(sessionName))
+	if err != nil {
+		return time.Time{}, false
+	}
+	var t cachedToken
+	if err := json.Unmarshal(b, &t); err != nil || t.ExpiresAt == "" {
+		return time.Time{}, false
+	}
+	exp, err := time.Parse(time.RFC3339, t.ExpiresAt)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return exp, true
+}
+
 func writeToken(sessionName string, t cachedToken) error {
 	dir := cacheDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -174,6 +192,27 @@ func Login(ctx context.Context, sessionName, startURL, region string) (string, e
 			return "", fmt.Errorf("creating token: %w", err)
 		}
 	}
+}
+
+// AccountName resolves an account's display name via sso:ListAccounts. It's much
+// cheaper than Discover (no per-account role listing) — used to label the active
+// account in `current`.
+func AccountName(ctx context.Context, region, accessToken, accountID string) (string, error) {
+	cfg := aws.Config{Region: region, Credentials: aws.AnonymousCredentials{}}
+	client := sso.NewFromConfig(cfg)
+	p := sso.NewListAccountsPaginator(client, &sso.ListAccountsInput{AccessToken: aws.String(accessToken)})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, a := range page.AccountList {
+			if aws.ToString(a.AccountId) == accountID {
+				return aws.ToString(a.AccountName), nil
+			}
+		}
+	}
+	return "", nil
 }
 
 // Discover lists every (account, role) the access token can assume in a session.

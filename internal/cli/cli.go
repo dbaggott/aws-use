@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dbaggott/aws-use/internal/awsconfig"
 	"github.com/dbaggott/aws-use/internal/sso"
@@ -31,22 +32,37 @@ func Execute() {
 
 func newRoot() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "aws-use [query...]",
-		Short: "Switch AWS SSO accounts/roles fast",
-		Long: `Switch your shell's AWS account/role across your SSO sessions.
+		Use:   "aws-use [filter...]",
+		Short: "Switch your shell's AWS account/role",
+		Long: `Switch your shell's AWS account/role — across all your SSO sessions.
 
-Run "aws-use" (through the shell hook) to pick an account/role and set
-AWS_PROFILE; add a query to filter, e.g. "aws-use dnbg admin". It discovers
-everything you can assume, manages the ~/.aws/config profile, and logs you in
-automatically when a session's token has expired.
+Run "aws-use" with no arguments to choose interactively: pick a session (if you
+have more than one), then an account and role, and it sets AWS_PROFILE in your
+current shell. Add filter words to narrow the list or jump straight to a match —
+they match against session, account, and role names.
 
-One-time setup: add the shell hook to your shell rc — eval "$(aws-use shellenv)".`,
-		Version:       Version,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		Args:          cobra.ArbitraryArgs,
-		RunE:          func(cmd *cobra.Command, args []string) error { return runUse(cmd.Context(), args) },
+aws-use discovers everything you can assume (no pre-made profiles needed), writes
+the ~/.aws/config profile for you, and signs you in automatically when a
+session's token has expired.
+
+Requires the shell hook, added once to your ~/.zshrc or ~/.bashrc:
+  eval "$(aws-use shellenv)"
+Without it, aws-use prints the profile it picked but can't change your shell.`,
+		Example: `  aws-use                 pick an account/role interactively, then switch
+  aws-use prod            filter to matches of "prod"
+  aws-use dnbg admin      jump to the dnbg session's admin role
+  aws-use ls              list every account/role you can assume`,
+		Version:           Version,
+		SilenceUsage:      true,
+		SilenceErrors:     true,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: completeFilter,
+		RunE:              func(cmd *cobra.Command, args []string) error { return runUse(cmd.Context(), args) },
 	}
+
+	// The `completion` command is auto-installed by the Homebrew formula and
+	// never run by hand — hide it so it doesn't clutter help or tab-completion.
+	root.CompletionOptions.HiddenDefaultCmd = true
 
 	root.AddGroup(
 		&cobra.Group{ID: "core", Title: "Commands:"},
@@ -75,7 +91,7 @@ One-time setup: add the shell hook to your shell rc — eval "$(aws-use shellenv
 			Short:   "Show the active AWS_PROFILE",
 			GroupID: "core",
 			Args:    cobra.NoArgs,
-			RunE:    func(cmd *cobra.Command, args []string) error { return runCurrent() },
+			RunE:    func(cmd *cobra.Command, args []string) error { return runCurrent(cmd.Context()) },
 		},
 		&cobra.Command{
 			Use:   "login [session]",
@@ -88,18 +104,22 @@ when needed. It's mainly for pre-authenticating or scripting.`,
 			Args:    cobra.MaximumNArgs(1),
 			RunE:    func(cmd *cobra.Command, args []string) error { return runLogin(cmd.Context(), args) },
 		},
+		// Hidden from help/completion (still runnable): setup you do once, and the
+		// hook is already documented in the long description, README, and caveats.
 		&cobra.Command{
-			Use:     "shellenv",
-			Short:   "Print the shell hook to add to your shell rc",
-			GroupID: "setup",
-			Args:    cobra.NoArgs,
-			RunE:    func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook()); return nil },
+			Use:    "shellenv",
+			Short:  "Print the shell hook to add to your shell rc",
+			Hidden: true,
+			Args:   cobra.NoArgs,
+			RunE:   func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook()); return nil },
 		},
+		// Hidden from help/completion (still runnable): the --version flag covers it.
 		&cobra.Command{
-			Use:   "version",
-			Short: "Print the aws-use version",
-			Args:  cobra.NoArgs,
-			RunE:  func(cmd *cobra.Command, args []string) error { fmt.Println(Version); return nil },
+			Use:    "version",
+			Short:  "Print the aws-use version",
+			Hidden: true,
+			Args:   cobra.NoArgs,
+			RunE:   func(cmd *cobra.Command, args []string) error { fmt.Println(Version); return nil },
 		},
 	)
 	return root
@@ -131,11 +151,16 @@ func runUse(ctx context.Context, query []string) error {
 		}
 	}
 
-	roles, err := sso.Discover(ctx, session.Name, session.Region, token)
-	if err != nil {
+	var roles []sso.AccountRole
+	if err := spin("discovering accounts in "+session.Name, func() error {
+		var e error
+		roles, e = sso.Discover(ctx, session.Name, session.Region, token)
+		return e
+	}); err != nil {
 		return err
 	}
 	roles = filter(roles, terms)
+	sortRoles(roles)
 	switch len(roles) {
 	case 0:
 		return fmt.Errorf("no account/role in %s matches %q", session.Name, strings.Join(terms, " "))
@@ -160,7 +185,7 @@ func runUse(ctx context.Context, query []string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "→ %s (%s / %s)\n", name, ar.AccountName, ar.RoleName)
+	fmt.Fprint(os.Stderr, rowLine(true, session.Name, ar.AccountName, ar.AccountID, ar.RoleName))
 
 	// The shell hook captures stdout via command substitution, so a piped stdout
 	// means we're running under the hook: print only the export line for it to
@@ -239,29 +264,28 @@ func runLs(ctx context.Context) error {
 		if !ok {
 			continue
 		}
-		ars, err := sso.Discover(ctx, s.Name, s.Region, token)
-		if err != nil {
+		var ars []sso.AccountRole
+		if err := spin("discovering "+s.Name, func() error {
+			var e error
+			ars, e = sso.Discover(ctx, s.Name, s.Region, token)
+			return e
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", s.Name, err)
 			continue
 		}
 		rows = append(rows, ars...)
 	}
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].Session != rows[j].Session {
-			return rows[i].Session < rows[j].Session
-		}
-		if rows[i].AccountName != rows[j].AccountName {
-			return rows[i].AccountName < rows[j].AccountName
-		}
-		return rows[i].RoleName < rows[j].RoleName
-	})
+	sortRoles(rows)
 
-	const format = "%-10s  %-24s  %-14s  %s\n"
+	// Mark the row matching the active AWS_PROFILE (leading "*") and annotate it
+	// with its session's token expiry.
+	active := os.Getenv("AWS_PROFILE")
 	if len(rows) > 0 {
-		fmt.Printf(format, "SESSION", "ACCOUNT", "ACCOUNT ID", "ROLE")
+		fmt.Printf(rowFormat, " ", "SESSION", "ACCOUNT", "ACCOUNT ID", "ROLE", "")
 	}
 	for _, r := range rows {
-		fmt.Printf(format, r.Session, r.AccountName, r.AccountID, r.RoleName)
+		isActive := active != "" && profileName(awsconfig.SSOSession{Name: r.Session}, r) == active
+		fmt.Print(rowLine(isActive, r.Session, r.AccountName, r.AccountID, r.RoleName))
 	}
 	return nil
 }
@@ -285,13 +309,143 @@ func runLogin(ctx context.Context, args []string) error {
 	return nil
 }
 
-func runCurrent() error {
-	if p := os.Getenv("AWS_PROFILE"); p != "" {
-		fmt.Println(p)
+func runCurrent(ctx context.Context) error {
+	profile := os.Getenv("AWS_PROFILE")
+	if profile == "" {
+		fmt.Fprintln(os.Stderr, "AWS_PROFILE is not set")
 		return nil
 	}
-	fmt.Fprintln(os.Stderr, "AWS_PROFILE is not set")
+	info, ok := awsconfig.ProfileInfo(profile)
+	if !ok {
+		fmt.Println(profile) // not an SSO profile we can describe
+		return nil
+	}
+
+	// The account name only comes from a live ListAccounts call. Best-effort:
+	// skip the network when the token isn't valid, so `current` still works
+	// offline and reports expiry (the row shows "-" for the name then).
+	account := ""
+	if token, valid := sso.ValidToken(info.SSOSession); valid {
+		_ = spin("checking "+info.SSOSession, func() error {
+			name, err := sso.AccountName(ctx, info.Region, token, info.AccountID)
+			account = name
+			return err
+		})
+	}
+	fmt.Print(rowLine(true, info.SSOSession, account, info.AccountID, info.RoleName))
 	return nil
+}
+
+// spin runs fn while animating a spinner on stderr, so a slow network doesn't
+// look like a hang. It renders only when stderr is a terminal (piped/scripted
+// output stays clean) and never touches stdout, which the shell hook captures.
+func spin(title string, fn func() error) error {
+	if !isatty.IsTerminal(os.Stderr.Fd()) {
+		return fn()
+	}
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+
+	frames := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for i := 0; ; i++ {
+		select {
+		case err := <-done:
+			fmt.Fprint(os.Stderr, "\r\033[K") // clear the spinner line
+			return err
+		case <-ticker.C:
+			fmt.Fprintf(os.Stderr, "\r%c %s", frames[i%len(frames)], title)
+		}
+	}
+}
+
+// rowFormat is the shared column layout used by `ls`, `current`, and the switch
+// confirmation: marker, session, account, account id, role, note.
+const rowFormat = "%s %-10s  %-24s  %-14s  %s%s\n"
+
+// expiryNote renders the parenthetical token-status suffix for a session.
+func expiryNote(session string) string {
+	switch exp, present := sso.TokenExpiry(session); {
+	case !present:
+		return "  (not logged in)"
+	case time.Now().After(exp):
+		return "  (expired)"
+	default:
+		return "  (expires in " + humanDuration(time.Until(exp)) + ")"
+	}
+}
+
+// rowLine renders one account/role line. The active row gets a "*" marker and an
+// expiry note; a blank account name renders as "-".
+func rowLine(active bool, session, account, accountID, role string) string {
+	marker, note := " ", ""
+	if active {
+		marker, note = "*", expiryNote(session)
+	}
+	if account == "" {
+		account = "-"
+	}
+	return fmt.Sprintf(rowFormat, marker, session, account, accountID, role, note)
+}
+
+// sortRoles orders account/roles by session, then account name, then role — the
+// order used by `ls`, the interactive picker, and the switch flow.
+func sortRoles(rs []sso.AccountRole) {
+	sort.Slice(rs, func(i, j int) bool {
+		if rs[i].Session != rs[j].Session {
+			return rs[i].Session < rs[j].Session
+		}
+		if rs[i].AccountName != rs[j].AccountName {
+			return rs[i].AccountName < rs[j].AccountName
+		}
+		return rs[i].RoleName < rs[j].RoleName
+	})
+}
+
+// humanDuration renders a positive duration as e.g. "3h42m" or "42m" (or "<1m"),
+// rounded to the minute.
+func humanDuration(d time.Duration) string {
+	d = d.Round(time.Minute)
+	h := d / time.Hour
+	m := (d % time.Hour) / time.Minute
+	switch {
+	case h > 0:
+		return fmt.Sprintf("%dh%dm", h, m)
+	case m > 0:
+		return fmt.Sprintf("%dm", m)
+	default:
+		return "<1m"
+	}
+}
+
+// completeFilter offers SSO session names as shell completions for the filter
+// words. It reads only ~/.aws/config (no network), so completion stays instant;
+// account/role names are left to the interactive picker.
+//
+// A switch targets exactly one session, so session names are only offered until
+// one is chosen: with a single configured session there's nothing to pick, and
+// once a prior word names a session the rest filter accounts/roles within it —
+// suggesting another session name there would be nonsense (`aws-use dnbg qhcorp`).
+func completeFilter(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	sessions, err := awsconfig.SSOSessions()
+	if err != nil || len(sessions) <= 1 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	for _, a := range args {
+		for _, s := range sessions {
+			if strings.EqualFold(a, s.Name) {
+				return nil, cobra.ShellCompDirectiveNoFileComp // a session is already chosen
+			}
+		}
+	}
+	var out []string
+	for _, s := range sessions {
+		if strings.HasPrefix(s.Name, toComplete) {
+			out = append(out, s.Name)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 // resolveSession picks the target session: the only one, or one named by a query
