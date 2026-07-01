@@ -4,10 +4,10 @@ PKG     := github.com/dbaggott/aws-use/internal/cli
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION)
 PREFIX  ?= $(HOME)/.local
 
-.PHONY: build install uninstall test lint shelltest fmt clean help
+.PHONY: build install uninstall test lint shellcheck shelltest fmt clean help
 
 help:
-	@echo "Targets: build install uninstall test lint shelltest fmt clean"
+	@echo "Targets: build install uninstall test lint shellcheck shelltest fmt clean"
 	@echo "  install honors PREFIX (default: $(HOME)/.local) -> PREFIX/bin/$(BINARY)"
 
 build:
@@ -28,6 +28,12 @@ test:
 lint:
 	golangci-lint run ./...
 	@test -z "$$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
+
+# Lint the shell we ship: the test harness and the generated shellenv hook (the
+# trickiest, generated shell code in the project).
+shellcheck: build
+	shellcheck test/shell_hook.sh
+	./$(BINARY) shellenv | shellcheck -s bash -
 
 # Exercise the shellenv hook under every shell we support (bash 3.2 + zsh).
 shelltest: build
