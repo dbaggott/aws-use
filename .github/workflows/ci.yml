@@ -35,6 +35,8 @@ jobs:
       - run: make build
       - name: Smoke test
         run: ./aws-use version
+      - name: Shellcheck the shell we ship (hook + test harness)
+        run: make shellcheck   # shellcheck is preinstalled on ubuntu runners
 
   # The shellenv hook must work on macOS's stock bash (3.2, the oldest we
   # support) and zsh. macos-latest ships both.
