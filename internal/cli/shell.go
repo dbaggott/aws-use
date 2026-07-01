@@ -17,14 +17,14 @@ const shellHookFmt = `# aws-use shell hook. Add to your ~/.zshrc or ~/.bashrc:
 aws-use() {
   case "${1:-}" in
     ls|login|current|shellenv|version|completion|help|-h|--help|--version)
-      command %[1]s "$@"
+      command "%[1]s" "$@"
       ;;
     *)
       # Accept an explicit leading "use" too, so "aws-use use dnbg" does not
       # become "aws-use use use dnbg".
       [ "${1:-}" = "use" ] && shift
       local _out
-      _out="$(command %[1]s use "$@")" || return $?
+      _out="$(command "%[1]s" use "$@")" || return $?
       [ -n "$_out" ] && eval "$_out"
       ;;
   esac

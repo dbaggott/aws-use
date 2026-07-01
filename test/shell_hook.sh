@@ -34,7 +34,7 @@ chmod +x "$stub"
 # dispatch logic (case branches, leading-"use" strip, eval) against a
 # controllable backend.
 hook="$("$REAL" shellenv)"
-emitted="$(printf '%s\n' "$hook" | sed -n 's/^ *command \(.*\) "\$@"$/\1/p' | head -1)"
+emitted="$(printf '%s\n' "$hook" | sed -n 's/^ *command "\(.*\)" "\$@"$/\1/p' | head -1)"
 hook="$(printf '%s\n' "$hook" | sed "s#$emitted#$stub#g")"
 eval "$hook"
 
