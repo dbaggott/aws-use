@@ -36,6 +36,32 @@ func TestProfileName(t *testing.T) {
 	}
 }
 
+func TestResolveSession(t *testing.T) {
+	two := []awsconfig.SSOSession{{Name: "dnbg"}, {Name: "qhcorp"}}
+
+	// A query term matching a session name selects it and is consumed.
+	s, terms, err := resolveSession(two, []string{"qhcorp", "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Name != "qhcorp" {
+		t.Errorf("want session qhcorp, got %q", s.Name)
+	}
+	if len(terms) != 1 || terms[0] != "admin" {
+		t.Errorf("want remaining terms [admin], got %v", terms)
+	}
+
+	// A single session is used regardless, with the query passed through intact.
+	one := []awsconfig.SSOSession{{Name: "only"}}
+	s2, terms2, err := resolveSession(one, []string{"foo", "bar"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s2.Name != "only" || len(terms2) != 2 {
+		t.Errorf("single session: got %q terms=%v", s2.Name, terms2)
+	}
+}
+
 func TestFilter(t *testing.T) {
 	roles := []sso.AccountRole{
 		{AccountName: "dnbg-management", AccountID: "1", RoleName: "AdministratorAccess"},

@@ -13,6 +13,9 @@ aws-use() {
       command aws-use "$@"
       ;;
     *)
+      # Accept an explicit leading "use" too, so "aws-use use dnbg" does not
+      # become "aws-use use use dnbg".
+      [ "${1:-}" = "use" ] && shift
       local _out
       _out="$(command aws-use use "$@")" || return $?
       [ -n "$_out" ] && eval "$_out"

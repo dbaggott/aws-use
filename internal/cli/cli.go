@@ -260,9 +260,12 @@ func profileName(s awsconfig.SSOSession, ar sso.AccountRole) string {
 		tmpl = defaultProfileTemplate
 	}
 	r := strings.NewReplacer(
-		"{session}", slug(s.Name),
-		"{account}", slug(ar.AccountName),
-		"{role}", slug(ar.RoleName),
+		"{session}", s.Name,
+		"{account}", ar.AccountName,
+		"{role}", ar.RoleName,
 	)
-	return r.Replace(tmpl)
+	// Slug the whole assembled name, not just the substituted tokens, so a
+	// custom template's own characters can't carry shell metacharacters into
+	// the `export AWS_PROFILE=…` line the shell hook evals.
+	return slug(r.Replace(tmpl))
 }
