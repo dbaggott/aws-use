@@ -31,44 +31,69 @@ func Execute() {
 
 func newRoot() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "aws-use [query...]",
-		Short:         "Switch AWS SSO accounts/roles fast",
+		Use:   "aws-use [query...]",
+		Short: "Switch AWS SSO accounts/roles fast",
+		Long: `Switch your shell's AWS account/role across your SSO sessions.
+
+Run "aws-use" (through the shell hook) to pick an account/role and set
+AWS_PROFILE; add a query to filter, e.g. "aws-use dnbg admin". It discovers
+everything you can assume, manages the ~/.aws/config profile, and logs you in
+automatically when a session's token has expired.
+
+One-time setup: add the shell hook to your shell rc — eval "$(aws-use shellenv)".`,
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
 		RunE:          func(cmd *cobra.Command, args []string) error { return runUse(cmd.Context(), args) },
 	}
+
+	root.AddGroup(
+		&cobra.Group{ID: "core", Title: "Commands:"},
+		&cobra.Group{ID: "setup", Title: "Setup & auth:"},
+	)
+
 	root.AddCommand(
+		// Internal: the shell hook invokes this as `aws-use use …`. Hidden — you
+		// run bare `aws-use`, and the hook translates it.
 		&cobra.Command{
-			Use:   "use [query...]",
-			Short: "Pick an account/role and print the AWS_PROFILE export (used by the shell hook)",
-			Args:  cobra.ArbitraryArgs,
-			RunE:  func(cmd *cobra.Command, args []string) error { return runUse(cmd.Context(), args) },
+			Use:    "use [query...]",
+			Short:  "internal: switch flow used by the shell hook",
+			Hidden: true,
+			Args:   cobra.ArbitraryArgs,
+			RunE:   func(cmd *cobra.Command, args []string) error { return runUse(cmd.Context(), args) },
 		},
 		&cobra.Command{
-			Use:   "ls",
-			Short: "List every account/role across logged-in SSO sessions",
-			Args:  cobra.NoArgs,
-			RunE:  func(cmd *cobra.Command, args []string) error { return runLs(cmd.Context()) },
+			Use:     "ls",
+			Short:   "List every account/role you can assume",
+			GroupID: "core",
+			Args:    cobra.NoArgs,
+			RunE:    func(cmd *cobra.Command, args []string) error { return runLs(cmd.Context()) },
+		},
+		&cobra.Command{
+			Use:     "current",
+			Short:   "Show the active AWS_PROFILE",
+			GroupID: "core",
+			Args:    cobra.NoArgs,
+			RunE:    func(cmd *cobra.Command, args []string) error { return runCurrent() },
 		},
 		&cobra.Command{
 			Use:   "login [session]",
-			Short: "Log in to an SSO session (refresh its token)",
-			Args:  cobra.MaximumNArgs(1),
-			RunE:  func(cmd *cobra.Command, args []string) error { return runLogin(cmd.Context(), args) },
+			Short: "Authenticate an SSO session (usually automatic)",
+			Long: `Refresh the browser sign-in for an SSO session.
+
+You rarely need this: switching logs in automatically, and "ls" offers to log in
+when needed. It's mainly for pre-authenticating or scripting.`,
+			GroupID: "setup",
+			Args:    cobra.MaximumNArgs(1),
+			RunE:    func(cmd *cobra.Command, args []string) error { return runLogin(cmd.Context(), args) },
 		},
 		&cobra.Command{
-			Use:   "current",
-			Short: "Show the active AWS_PROFILE",
-			Args:  cobra.NoArgs,
-			RunE:  func(cmd *cobra.Command, args []string) error { return runCurrent() },
-		},
-		&cobra.Command{
-			Use:   "shellenv",
-			Short: "Print the shell hook to eval from your shell rc",
-			Args:  cobra.NoArgs,
-			RunE:  func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook()); return nil },
+			Use:     "shellenv",
+			Short:   "Print the shell hook to add to your shell rc",
+			GroupID: "setup",
+			Args:    cobra.NoArgs,
+			RunE:    func(cmd *cobra.Command, args []string) error { fmt.Print(shellHook()); return nil },
 		},
 		&cobra.Command{
 			Use:   "version",
@@ -159,11 +184,59 @@ func runLs(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var rows []sso.AccountRole
+
+	// Partition by whether we already have a usable token.
+	var ready, missing []awsconfig.SSOSession
 	for _, s := range sessions {
+		if _, ok := sso.ValidToken(s.Name); ok {
+			ready = append(ready, s)
+		} else {
+			missing = append(missing, s)
+		}
+	}
+
+	// Offer to log in to the sessions we can't list yet — but only in a fully
+	// interactive terminal (both stdin and stdout are TTYs). That way a piped or
+	// redirected `ls` in either direction (`ls | grep`, `ls > file`, scripted)
+	// never blocks on or is surprised by a prompt.
+	if len(missing) > 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd()) {
+		names := make([]string, len(missing))
+		for i, s := range missing {
+			names[i] = s.Name
+		}
+		chosen, err := pickMulti("Log in to these sessions? (space to select, enter to confirm)", names)
+		if err != nil {
+			return err
+		}
+		want := make(map[string]bool, len(chosen))
+		for _, n := range chosen {
+			want[n] = true
+		}
+		var still []awsconfig.SSOSession
+		for _, s := range missing {
+			if !want[s.Name] {
+				still = append(still, s)
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "logging in to %s…\n", s.Name)
+			if _, err := sso.Login(ctx, s.Name, s.StartURL, s.Region); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", s.Name, err)
+				continue
+			}
+			ready = append(ready, s)
+		}
+		missing = still
+	}
+
+	// Note any sessions still not logged in (non-interactive, or declined).
+	for _, s := range missing {
+		fmt.Fprintf(os.Stderr, "%s: not logged in (run `aws-use login %s`)\n", s.Name, s.Name)
+	}
+
+	var rows []sso.AccountRole
+	for _, s := range ready {
 		token, ok := sso.ValidToken(s.Name)
 		if !ok {
-			fmt.Fprintf(os.Stderr, "%s: not logged in (run `aws-use login %s`)\n", s.Name, s.Name)
 			continue
 		}
 		ars, err := sso.Discover(ctx, s.Name, s.Region, token)
@@ -182,8 +255,13 @@ func runLs(ctx context.Context) error {
 		}
 		return rows[i].RoleName < rows[j].RoleName
 	})
+
+	const format = "%-10s  %-24s  %-14s  %s\n"
+	if len(rows) > 0 {
+		fmt.Printf(format, "SESSION", "ACCOUNT", "ACCOUNT ID", "ROLE")
+	}
 	for _, r := range rows {
-		fmt.Printf("%-10s  %-22s  %-14s  %s\n", r.Session, r.AccountName, r.AccountID, r.RoleName)
+		fmt.Printf(format, r.Session, r.AccountName, r.AccountID, r.RoleName)
 	}
 	return nil
 }
@@ -200,8 +278,11 @@ func runLogin(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, err = sso.Login(ctx, session.Name, session.StartURL, session.Region)
-	return err
+	if _, err := sso.Login(ctx, session.Name, session.StartURL, session.Region); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "✓ logged in to %s\n", session.Name)
+	return nil
 }
 
 func runCurrent() error {
