@@ -1,11 +1,54 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dbaggott/aws-use/internal/awsconfig"
 	"github.com/dbaggott/aws-use/internal/sso"
 )
+
+func TestHumanDuration(t *testing.T) {
+	cases := map[time.Duration]string{
+		3*time.Hour + 42*time.Minute: "3h42m",
+		42 * time.Minute:             "42m",
+		2 * time.Minute:              "2m",
+		time.Hour:                    "1h0m",
+		10 * time.Second:             "<1m",
+	}
+	for d, want := range cases {
+		if got := humanDuration(d); got != want {
+			t.Errorf("humanDuration(%s) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+func TestCompleteFilter(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	body := "[sso-session dnbg]\nsso_start_url = https://d.example/start\n\n[sso-session qhcorp]\nsso_start_url = https://q.example/start\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AWS_CONFIG_FILE", path)
+
+	all, _ := completeFilter(nil, nil, "")
+	if len(all) != 2 {
+		t.Fatalf("want 2 completions, got %v", all)
+	}
+	pref, _ := completeFilter(nil, nil, "dn")
+	if len(pref) != 1 || pref[0] != "dnbg" {
+		t.Errorf("prefix 'dn': got %v", pref)
+	}
+	// Once a word names a session, the switch targets it — no more session
+	// completions (you can't filter across two sessions).
+	after, _ := completeFilter(nil, []string{"dnbg"}, "")
+	if len(after) != 0 {
+		t.Errorf("session already chosen should yield no completions, got %v", after)
+	}
+}
 
 func TestSlug(t *testing.T) {
 	cases := map[string]string{

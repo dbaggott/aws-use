@@ -74,6 +74,34 @@ func SSOSessions() ([]SSOSession, error) {
 	return out, nil
 }
 
+// ProfileInfo returns the SSO fields of a profile block, and whether the profile
+// exists and is SSO-backed.
+func ProfileInfo(profile string) (Profile, bool) {
+	f, err := load()
+	if err != nil {
+		return Profile{}, false
+	}
+	name := "profile " + profile
+	if profile == "default" {
+		name = "default"
+	}
+	sec, err := f.GetSection(name)
+	if err != nil {
+		return Profile{}, false
+	}
+	session := sec.Key("sso_session").String()
+	if session == "" {
+		return Profile{}, false
+	}
+	return Profile{
+		Name:       profile,
+		SSOSession: session,
+		AccountID:  sec.Key("sso_account_id").String(),
+		RoleName:   sec.Key("sso_role_name").String(),
+		Region:     sec.Key("region").String(),
+	}, true
+}
+
 // EnsureProfile creates or updates the [profile p.Name] block so it points at
 // the given SSO session/account/role. It is idempotent: an unchanged profile is
 // left untouched (and the file is not rewritten).

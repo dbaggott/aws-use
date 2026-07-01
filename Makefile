@@ -32,7 +32,7 @@ lint:
 # Lint the shell we ship: the test harness and the generated shellenv hook (the
 # trickiest, generated shell code in the project).
 shellcheck: build
-	shellcheck test/shell_hook.sh
+	shellcheck test/shell_hook.sh dev.sh
 	./$(BINARY) shellenv | shellcheck -s bash -
 
 # Exercise the shellenv hook under every shell we support (bash 3.2 + zsh).

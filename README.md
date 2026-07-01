@@ -6,25 +6,30 @@ you can assume, lets you pick one, manages the `~/.aws/config` profile for it,
 and sets `AWS_PROFILE` in your current shell.
 
 ```
-$ aws-use
-? SSO session: dnbg
-? account / role: dnbg-management      AdministratorAccess
-→ dnbg-management-AdministratorAccess (dnbg-management / AdministratorAccess)
+$ aws-use                       # pick interactively; sets AWS_PROFILE
+* dnbg    dnbg-operations   224850139999   AdministratorAccess  (expires in 8h)
 
-$ aws-use dnbg ops admin        # fuzzy: jump straight to a match
-→ dnbg-operations-AdministratorAccess (dnbg-operations / AdministratorAccess)
+$ aws-use dnbg admin            # filter words jump straight to a match
+* dnbg    dnbg-management   626716204703   AdministratorAccess  (expires in 8h)
 
-$ aws-use ls                    # everything you can assume, across sessions
-dnbg      dnbg-management       626716204703    AdministratorAccess
-dnbg      dnbg-operations       224850139999    AdministratorAccess
-work      acme-prod             111111111111    ReadOnlyAccess
+$ aws-use ls                    # everything you can assume; * marks the active one
+  SESSION   ACCOUNT           ACCOUNT ID     ROLE
+  dnbg      dnbg-management    626716204703   AdministratorAccess
+* dnbg      dnbg-operations   224850139999   AdministratorAccess  (expires in 8h)
+  work      acme-prod         111111111111   ReadOnlyAccess
+
+$ aws-use current               # the active profile, same row format
+* dnbg    dnbg-operations   224850139999   AdministratorAccess  (expires in 8h)
 ```
 
 It's a self-contained Go binary — no `aws` CLI or `jq` dependency. Discovery
 calls `sso:ListAccounts` / `sso:ListAccountRoles` with your cached SSO token, so
 you never pre-create profiles by hand. For the account/role you pick, `aws-use`
 ensures an SSO-backed `[profile …]` block exists in `~/.aws/config` (so it
-auto-refreshes and works with Terraform) and then sets `AWS_PROFILE`. Login uses
+auto-refreshes and works with Terraform) and then sets `AWS_PROFILE`. It
+*selects* the account/role — it doesn't assume the role or fetch credentials
+itself; your AWS CLI, SDKs, and Terraform resolve those from the profile on
+demand. Login uses
 the device-authorization flow and writes the **same** `~/.aws/sso/cache` token
 the AWS CLI uses, so a session you log in here is reused everywhere — and vice
 versa.
@@ -47,7 +52,7 @@ session, e.g. `dnbg`).
 
 ## Install
 
-Pick one. Homebrew installs the latest [release](https://github.com/dbaggott/aws-use/releases); from source builds whatever you have checked out. **After installing, add the shell hook** (below) — the tool can't switch your shell without it.
+Pick one. Homebrew installs the latest [release](https://github.com/dbaggott/aws-use/releases) (and shell completions); from source builds whatever you have checked out. **After installing, add the shell hook** (below) — the tool can't switch your shell without it.
 
 ### Homebrew (recommended on macOS)
 
@@ -82,21 +87,40 @@ eval "$(aws-use shellenv)"
 ## Usage
 
 ```
-aws-use [query…]
+aws-use [filter…]
 ```
+
+Running `aws-use` with no arguments picks interactively (session → account →
+role). Filter words narrow the list or jump straight to a match — they match
+session, account, and role names, and `aws-use <TAB>` completes session names.
 
 | Command | Effect |
 |---|---|
-| `aws-use` | Pick session → account → role, then set `AWS_PROFILE` |
-| `aws-use <query…>` | Same, fuzzy-filtered (`aws-use dnbg admin`); a word matching a session name selects it |
-| `aws-use ls` | List every account/role across logged-in sessions |
-| `aws-use login [session]` | Log in to a session (refresh its token) |
-| `aws-use current` | Print the active `AWS_PROFILE` |
-| `aws-use shellenv` | Print the shell hook |
-| `aws-use version` | Print the version |
+| `aws-use [filter…]` | Pick an account/role (filtered by the words) and set `AWS_PROFILE` |
+| `aws-use ls` | List every account/role you can assume; `*` marks the active one + its expiry |
+| `aws-use current` | Show the active profile — account/role and token expiry |
+| `aws-use login [session]` | Authenticate a session. Usually unnecessary: switching logs in automatically, and `ls` offers to log in when needed |
+| `aws-use shellenv` | Print the shell hook (for your rc) |
 
 If a session's token is missing or expired, the switch flow logs you in first
 (browser device-authorization flow).
+
+## Development
+
+Build from the checkout and load the hook + completion into your current shell:
+
+```sh
+source dev.sh
+```
+
+Checks:
+
+```sh
+make test        # go test -race -cover
+make lint        # golangci-lint + gofmt
+make shellcheck  # lint the shellenv hook + test harness
+make shelltest   # exercise the hook under bash 3.2 + zsh
+```
 
 ## Releasing
 

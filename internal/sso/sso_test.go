@@ -22,6 +22,21 @@ func TestCachePathMatchesAWSCLIScheme(t *testing.T) {
 	}
 }
 
+func TestTokenExpiry(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if _, present := TokenExpiry("dnbg"); present {
+		t.Fatal("no token file yet")
+	}
+	exp := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	if err := writeToken("dnbg", cachedToken{AccessToken: "x", ExpiresAt: exp.Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	got, present := TokenExpiry("dnbg")
+	if !present || !got.Equal(exp) {
+		t.Errorf("TokenExpiry = %v, %v; want %v, true", got, present, exp)
+	}
+}
+
 func TestValidTokenAndWriteRoundTrip(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
