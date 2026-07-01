@@ -27,14 +27,14 @@ changelog:
   sort: asc
 
 # Publishes/updates the Homebrew formula in dbaggott/homebrew-tap on each
-# release. Requires a HOMEBREW_TAP_TOKEN secret (a PAT with write access to the
+# release. Requires a TAP_GITHUB_TOKEN secret (a PAT with write access to the
 # tap repo) in the release workflow — GITHUB_TOKEN can't push to another repo.
 brews:
   - name: aws-use
     repository:
       owner: dbaggott
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/dbaggott/aws-use
     description: Switch AWS SSO accounts/roles fast across multiple SSO sessions
     license: MIT

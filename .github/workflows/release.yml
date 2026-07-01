@@ -5,7 +5,7 @@ name: release
 # GitHub Release, and updates the Homebrew formula in dbaggott/homebrew-tap.
 # Pushes that don't change VERSION find the tag already present and no-op.
 #
-# HOMEBREW_TAP_TOKEN must be a PAT with write access to dbaggott/homebrew-tap
+# TAP_GITHUB_TOKEN must be a PAT with write access to dbaggott/homebrew-tap
 # (GITHUB_TOKEN cannot push to another repo).
 
 on:
@@ -52,4 +52,4 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
