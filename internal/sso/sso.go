@@ -308,6 +308,9 @@ func loginPKCE(ctx context.Context, sessionName, startURL, region string) (strin
 		Scopes:       []string{scope},
 		GrantTypes:   []string{"authorization_code", "refresh_token"},
 		RedirectUris: []string{redirect},
+		// Required for the authorization-code flow (unlike device-code): the SSO
+		// instance's issuer URL, which is the session's start URL.
+		IssuerUrl: aws.String(startURL),
 	})
 	if err != nil {
 		return "", fmt.Errorf("registering oidc client: %w", err)
