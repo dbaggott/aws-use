@@ -145,13 +145,9 @@ func runUse(ctx context.Context, query []string) error {
 		return err
 	}
 
-	token, ok := sso.ValidToken(session.Name)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Logging in to %s…\n", session.Name)
-		token, err = sso.Login(ctx, session.Name, session.StartURL, session.Region)
-		if err != nil {
-			return err
-		}
+	token, err := sso.AcquireToken(ctx, session.Name, session.StartURL, session.Region)
+	if err != nil {
+		return err
 	}
 
 	var roles []sso.AccountRole
@@ -247,8 +243,8 @@ func runLs(ctx context.Context) error {
 				still = append(still, s)
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "logging in to %s…\n", s.Name)
-			if _, err := sso.Login(ctx, s.Name, s.StartURL, s.Region); err != nil {
+			fmt.Fprintf(os.Stderr, "authenticating %s…\n", s.Name)
+			if _, err := sso.AcquireToken(ctx, s.Name, s.StartURL, s.Region); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: %v\n", s.Name, err)
 				continue
 			}

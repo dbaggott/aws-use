@@ -3,9 +3,28 @@ package sso
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// PKCE verifiers must be 43–128 chars from the unreserved URL-safe set; 32 random
+// bytes base64url-encode (unpadded) to 43 chars.
+func TestRandURLToken(t *testing.T) {
+	a, err := randURLToken(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a) != 43 {
+		t.Errorf("len = %d, want 43", len(a))
+	}
+	if strings.ContainsAny(a, "+/=") {
+		t.Errorf("not url-safe / padded: %q", a)
+	}
+	if b, _ := randURLToken(32); a == b {
+		t.Error("expected distinct tokens")
+	}
+}
 
 // The token cache filename is sha1(sessionName) — this is the linchpin that
 // makes the AWS CLI, the SDKs, and Terraform reuse the token we write. These
