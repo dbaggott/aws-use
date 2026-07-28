@@ -20,6 +20,10 @@ $ aws-use ls                    # everything you can assume; * marks the active 
 
 $ aws-use current               # the active profile, same row format
 * dnbg    dnbg-operations   224850139999   AdministratorAccess  (expires in 8h)
+
+$ aws-use console               # open the AWS console for the account/role you're on
+  dnbg    dnbg-operations   224850139999   AdministratorAccess
+opening https://dnbg.awsapps.com/start/#/console?account_id=224850139999&role_name=AdministratorAccess
 ```
 
 It's a self-contained Go binary — no `aws` CLI or `jq` dependency. Discovery
@@ -40,6 +44,38 @@ browser.)
 Setting `AWS_PROFILE` in your shell is why the shell hook is required: only code
 running *in* your shell can change its environment, so the hook `eval`s the
 export `aws-use` prints (the same reason `aws sso login` alone can't switch you).
+
+## Opening the console
+
+```sh
+aws-use console                     # the account/role you're currently on
+aws-use console prod                # a different one, without changing your shell
+aws-use console --region us-west-2  # land on that region's console home
+aws-use console -d https://console.aws.amazon.com/s3/home
+aws-use console --print             # print the link (bookmark it) instead of opening it
+```
+
+`aws-use console` (alias: `aws-use open`) builds an [AWS access portal shortcut
+link](https://docs.aws.amazon.com/singlesignon/latest/userguide/createshortcutlink.html)
+— your session's `sso_start_url` with `/#/console?account_id=…&role_name=…`
+appended — and opens it in your browser. Nothing else is involved: no
+credentials are fetched and no API is called, so with no filter words it's
+purely a `~/.aws/config` lookup and works even when your CLI token has expired.
+The browser signs in with its own portal session, independent of the token in
+`~/.aws/sso/cache`.
+
+Filter words select any other account/role exactly as switching does, and
+`console` never touches `AWS_PROFILE` — opening one account in the browser while
+your shell stays on another is the point.
+
+**On roles that can't be used in the console:** Identity Center doesn't publish
+which permission sets are usable there — the account/role list `aws-use`
+discovers carries no console-access flag, so there's nothing to check up front.
+A role you can't use in the console is rejected by the portal after you land,
+not by `aws-use`. The link is always printed before the browser opens, so you
+can see exactly what was attempted. What `aws-use` *can* catch it does: a
+session whose `sso_start_url` isn't an access portal URL fails immediately, with
+the reason.
 
 ## Configuration
 
@@ -103,6 +139,7 @@ session, account, and role names, and `aws-use <TAB>` completes session names.
 | `aws-use [filter…]` | Pick an account/role (filtered by the words) and set `AWS_PROFILE` |
 | `aws-use ls` | List every account/role you can assume; `*` marks the active one + its expiry |
 | `aws-use current` | Show the active profile — account/role and token expiry |
+| `aws-use console [filter…]` | Open the AWS console for an account/role (default: the one you're on). Alias: `aws-use open`. Flags: `--region`, `--destination`, `--print` |
 | `aws-use login [session]` | Authenticate a session. Usually unnecessary: switching logs in automatically, and `ls` offers to log in when needed |
 | `aws-use shellenv` | Print the shell hook (for your rc) |
 

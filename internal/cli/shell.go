@@ -16,7 +16,7 @@ const shellHookFmt = `# aws-use shell hook. Add to your ~/.zshrc or ~/.bashrc:
 #   eval "$(aws-use shellenv)"
 aws-use() {
   case "${1:-}" in
-    ls|login|current|shellenv|version|completion|help|-h|--help|--version|__complete*)
+    ls|console|open|login|current|shellenv|version|completion|help|-h|--help|--version|__complete*)
       command "%[1]s" "$@"
       ;;
     *)

@@ -39,6 +39,10 @@ hook="$(printf '%s\n' "$hook" | sed "s#$emitted#$stub#g")"
 eval "$hook"
 
 check "passthrough (ls)" "PASSTHROUGH: ls" "$(aws-use ls)"
+# `console` and its `open` alias must pass through, or the hook would rewrite
+# them into `use console …` and switch the shell instead of opening a browser.
+check "passthrough (console)" "PASSTHROUGH: console prod" "$(aws-use console prod)"
+check "passthrough (open)" "PASSTHROUGH: open --print" "$(aws-use open --print)"
 unset AWS_PROFILE; aws-use >/dev/null 2>&1; check "bare switch" "switched-interactive" "${AWS_PROFILE:-}"
 unset AWS_PROFILE; aws-use dnbg admin >/dev/null 2>&1; check "query switch" "switched-dnbg" "${AWS_PROFILE:-}"
 unset AWS_PROFILE; aws-use use foo >/dev/null 2>&1; check "explicit use (stripped)" "switched-foo" "${AWS_PROFILE:-}"

@@ -10,6 +10,16 @@ import (
 	"github.com/dbaggott/aws-use/internal/sso"
 )
 
+// writeConfig points AWS_CONFIG_FILE at a temp file with the given body.
+func writeConfig(t *testing.T, body string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AWS_CONFIG_FILE", path)
+}
+
 func TestHumanDuration(t *testing.T) {
 	cases := map[time.Duration]string{
 		3*time.Hour + 42*time.Minute: "3h42m",
@@ -26,13 +36,7 @@ func TestHumanDuration(t *testing.T) {
 }
 
 func TestCompleteFilter(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config")
-	body := "[sso-session dnbg]\nsso_start_url = https://d.example/start\n\n[sso-session qhcorp]\nsso_start_url = https://q.example/start\n"
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("AWS_CONFIG_FILE", path)
+	writeConfig(t, "[sso-session dnbg]\nsso_start_url = https://d.example/start\n\n[sso-session qhcorp]\nsso_start_url = https://q.example/start\n")
 
 	all, _ := completeFilter(nil, nil, "")
 	if len(all) != 2 {
