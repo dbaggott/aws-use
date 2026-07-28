@@ -97,7 +97,28 @@ func TestURLRejectsUnusableInputs(t *testing.T) {
 
 func TestRegionHome(t *testing.T) {
 	want := "https://us-west-2.console.aws.amazon.com/console/home?region=us-west-2"
-	if got := RegionHome("us-west-2"); got != want {
+	got, err := RegionHome("us-west-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
 		t.Errorf("RegionHome() = %q, want %q", got, want)
+	}
+	for _, r := range []string{"us-gov-west-1", "cn-north-1", "ap-southeast-3"} {
+		if _, err := RegionHome(r); err != nil {
+			t.Errorf("RegionHome(%q): %v", r, err)
+		}
+	}
+}
+
+// The region lands in the destination URL's host, where percent-escapes aren't
+// valid syntax — so a bad region has to be rejected on shape, not escaped. Left
+// to escaping, "evil.com/x?a=b#" produced an unreadable `invalid URL escape`
+// error from url.Parse three layers down instead of a message naming the region.
+func TestRegionHomeRejectsNonRegions(t *testing.T) {
+	for _, r := range []string{"", "evil.com/x?a=b#", "US-EAST-1", "us east 1", "us_east_1", "us-east-1/"} {
+		if got, err := RegionHome(r); err == nil {
+			t.Errorf("RegionHome(%q) = %q, want an error", r, got)
+		}
 	}
 }

@@ -16,6 +16,7 @@ package console
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -52,11 +53,19 @@ func URL(startURL, accountID, roleName, destination string) (string, error) {
 	return portal + "/#/console?" + q.Encode(), nil
 }
 
+// regionRe is the shape of every AWS region code (us-east-1, ap-southeast-3,
+// us-gov-west-1, cn-north-1) — an allowlist rather than an escaping problem,
+// because the region lands in the *host* of the destination URL, where a
+// percent-escape is not valid syntax.
+var regionRe = regexp.MustCompile(`^[a-z0-9-]+$`)
+
 // RegionHome is the console home page for a region — the destination used when
 // the caller asks for a region but no specific page.
-func RegionHome(region string) string {
-	return fmt.Sprintf("https://%s.console.aws.amazon.com/console/home?region=%s",
-		url.PathEscape(region), url.QueryEscape(region))
+func RegionHome(region string) (string, error) {
+	if !regionRe.MatchString(region) {
+		return "", fmt.Errorf("%q is not a region code (expected something like us-east-1)", region)
+	}
+	return fmt.Sprintf("https://%s.console.aws.amazon.com/console/home?region=%s", region, region), nil
 }
 
 // portalBase validates that startURL is an access portal URL a shortcut link can

@@ -79,7 +79,10 @@ func runConsole(ctx context.Context, query []string, opts consoleOpts) error {
 
 	destination := opts.destination
 	if destination == "" && opts.region != "" {
-		destination = console.RegionHome(opts.region)
+		destination, err = console.RegionHome(opts.region)
+		if err != nil {
+			return err
+		}
 	}
 	link, err := console.URL(session.StartURL, ar.AccountID, ar.RoleName, destination)
 	if err != nil {
