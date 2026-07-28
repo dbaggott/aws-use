@@ -1,23 +1,11 @@
 package cli
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/dbaggott/aws-use/internal/awsconfig"
 )
-
-// writeConfig points AWS_CONFIG_FILE at a temp file with the given body.
-func writeConfig(t *testing.T, body string) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "config")
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("AWS_CONFIG_FILE", path)
-}
 
 const configWithProfiles = `
 [sso-session dnbg]
@@ -37,6 +25,9 @@ sso_role_name = AdministratorAccess
 
 [profile static-keys]
 region = us-east-1
+
+[profile partial]
+sso_session = dnbg
 `
 
 func TestActiveTarget(t *testing.T) {
@@ -68,9 +59,10 @@ func TestActiveTarget(t *testing.T) {
 	// Each of these is a cue to fall back to the picker, so the reason has to
 	// name the profile — an unexplained picker looks like AWS_PROFILE was ignored.
 	fallbacks := map[string]string{
-		"unset":            "",
-		"static-keys":      "static-keys",
-		"orphaned session": "orphaned",
+		"unset":               "",
+		"static-keys":         "static-keys",
+		"orphaned session":    "orphaned",
+		"session but no role": "partial",
 	}
 	for name, profile := range fallbacks {
 		t.Run("falls back: "+name, func(t *testing.T) {

@@ -140,6 +140,14 @@ func activeTarget(sessions []awsconfig.SSOSession) (awsconfig.SSOSession, sso.Ac
 		return awsconfig.SSOSession{}, sso.AccountRole{},
 			fmt.Sprintf("AWS_PROFILE=%s is not an SSO-backed profile", profile)
 	}
+	// ProfileInfo only promises an sso_session; the account and role keys can be
+	// missing from a hand-edited profile. Treat that as one more cue to pick,
+	// rather than letting the empty fields fail deeper down where the message
+	// would name the session instead of the malformed profile.
+	if info.AccountID == "" || info.RoleName == "" {
+		return awsconfig.SSOSession{}, sso.AccountRole{},
+			fmt.Sprintf("AWS_PROFILE=%s has no sso_account_id/sso_role_name", profile)
+	}
 	for _, s := range sessions {
 		if s.Name == info.SSOSession {
 			return s, sso.AccountRole{
