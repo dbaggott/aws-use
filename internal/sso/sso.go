@@ -18,15 +18,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sso"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 	oidctypes "github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
+	"github.com/dbaggott/aws-use/internal/browser"
 )
 
 const scope = "sso:account:access"
@@ -177,7 +176,7 @@ func loginDeviceCode(ctx context.Context, sessionName, startURL, region string) 
 	fmt.Fprintf(os.Stderr, "Opening %s\n", url)
 	fmt.Fprintf(os.Stderr, "If the browser does not open, visit it manually. Verification code: %s\n",
 		aws.ToString(auth.UserCode))
-	_ = openBrowser(url)
+	_ = browser.Open(url)
 
 	interval := time.Duration(auth.Interval) * time.Second
 	if interval <= 0 {
@@ -363,7 +362,7 @@ func loginPKCE(ctx context.Context, sessionName, startURL, region string) (strin
 
 	fmt.Fprintf(os.Stderr, "Opening %s\n", authURL)
 	fmt.Fprintln(os.Stderr, "Complete the sign-in in your browser…")
-	_ = openBrowser(authURL)
+	_ = browser.Open(authURL)
 
 	var code string
 	select {
@@ -443,18 +442,4 @@ func randURLToken(n int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
-}
-
-func openBrowser(url string) error {
-	var cmd string
-	var args []string
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = "open"
-	case "windows":
-		cmd, args = "rundll32", []string{"url.dll,FileProtocolHandler"}
-	default:
-		cmd = "xdg-open"
-	}
-	return exec.Command(cmd, append(args, url)...).Start()
 }

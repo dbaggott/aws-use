@@ -53,7 +53,8 @@ Without it, aws-use prints the profile it picked but can't change your shell.`,
 		Example: `  aws-use                 pick an account/role interactively, then switch
   aws-use prod            filter to matches of "prod"
   aws-use dnbg admin      jump to the dnbg session's admin role
-  aws-use ls              list every account/role you can assume`,
+  aws-use ls              list every account/role you can assume
+  aws-use console         open the AWS console for the account/role you're on`,
 		Version:           Version,
 		SilenceUsage:      true,
 		SilenceErrors:     true,
@@ -95,6 +96,7 @@ Without it, aws-use prints the profile it picked but can't change your shell.`,
 			Args:    cobra.NoArgs,
 			RunE:    func(cmd *cobra.Command, args []string) error { return runCurrent(cmd.Context()) },
 		},
+		newConsoleCmd(),
 		&cobra.Command{
 			Use:   "login [session]",
 			Short: "Authenticate an SSO session (usually automatic)",
@@ -140,38 +142,10 @@ func runUse(ctx context.Context, query []string) error {
 		return fmt.Errorf("no [sso-session] blocks in %s — run `aws configure sso` first", awsconfig.Path())
 	}
 
-	session, terms, err := resolveSession(sessions, query)
+	session, ar, err := resolveRole(ctx, sessions, query)
 	if err != nil {
 		return err
 	}
-
-	token, err := sso.AcquireToken(ctx, session.Name, session.StartURL, session.Region)
-	if err != nil {
-		return err
-	}
-
-	var roles []sso.AccountRole
-	if err := spin("discovering accounts in "+session.Name, func() error {
-		var e error
-		roles, e = sso.Discover(ctx, session.Name, session.Region, token)
-		return e
-	}); err != nil {
-		return err
-	}
-	roles = filter(roles, terms)
-	sortRoles(roles)
-	switch len(roles) {
-	case 0:
-		return fmt.Errorf("no account/role in %s matches %q", session.Name, strings.Join(terms, " "))
-	case 1:
-		// unambiguous — fall through
-	default:
-		roles, err = pickRoles(roles)
-		if err != nil {
-			return err
-		}
-	}
-	ar := roles[0]
 
 	name := profileName(session, ar)
 	if err := awsconfig.EnsureProfile(awsconfig.Profile{
@@ -202,6 +176,47 @@ func runUse(ctx context.Context, query []string) error {
 	}
 	fmt.Printf("export AWS_PROFILE=%s\n", name)
 	return nil
+}
+
+// resolveRole picks the single (session, account/role) a command targets: it
+// resolves the session, ensures a token, discovers everything that token can
+// assume, narrows by the remaining query words, and prompts when more than one
+// survives. Shared by the switch and by `console`, so both filter, sort, and
+// prompt identically.
+func resolveRole(ctx context.Context, sessions []awsconfig.SSOSession, query []string) (awsconfig.SSOSession, sso.AccountRole, error) {
+	session, terms, err := resolveSession(sessions, query)
+	if err != nil {
+		return session, sso.AccountRole{}, err
+	}
+
+	token, err := sso.AcquireToken(ctx, session.Name, session.StartURL, session.Region)
+	if err != nil {
+		return session, sso.AccountRole{}, err
+	}
+
+	var roles []sso.AccountRole
+	if err := spin("discovering accounts in "+session.Name, func() error {
+		var e error
+		roles, e = sso.Discover(ctx, session.Name, session.Region, token)
+		return e
+	}); err != nil {
+		return session, sso.AccountRole{}, err
+	}
+	roles = filter(roles, terms)
+	sortRoles(roles)
+	switch len(roles) {
+	case 0:
+		return session, sso.AccountRole{},
+			fmt.Errorf("no account/role in %s matches %q", session.Name, strings.Join(terms, " "))
+	case 1:
+		// unambiguous — fall through
+	default:
+		roles, err = pickRoles(roles)
+		if err != nil {
+			return session, sso.AccountRole{}, err
+		}
+	}
+	return session, roles[0], nil
 }
 
 func runLs(ctx context.Context) error {
