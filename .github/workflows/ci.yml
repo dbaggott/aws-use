@@ -2,11 +2,14 @@ name: ci
 
 on:
   pull_request:
+    # `ready_for_review` runs CI when a draft is marked ready; the jobs below skip while it is one.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
 jobs:
   lint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +27,7 @@ jobs:
           test -z "$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
 
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +45,7 @@ jobs:
   # The shellenv hook must work on macOS's stock bash (3.2, the oldest we
   # support) and zsh. macos-latest ships both.
   shell:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,3 +60,26 @@ jobs:
         run: /bin/bash test/shell_hook.sh ./aws-use
       - name: Hook under zsh
         run: zsh test/shell_hook.sh ./aws-use
+
+  # The single context branch protection requires. Which jobs gate a merge is then this
+  # file's business rather than a Terraform change — `needs:` is the list.
+  #
+  # ⚠️ `if: always()` is load-bearing: without it this job is SKIPPED when a dependency
+  # fails, and a skipped check reports SUCCESS to branch protection.
+  ci-required:
+    if: always()
+    needs: [lint, test, shell]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every required job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          set -euo pipefail
+          echo "needs.*.result = $RESULTS"
+          for r in ${RESULTS//,/ }; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::dependency reported '$r'"; exit 1 ;;
+            esac
+          done
