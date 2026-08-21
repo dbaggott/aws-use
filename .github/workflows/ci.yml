@@ -2,14 +2,11 @@ name: ci
 
 on:
   pull_request:
-    # `ready_for_review` runs CI when a draft is marked ready; the jobs below skip while it is one.
-    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
 jobs:
   lint:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +24,6 @@ jobs:
           test -z "$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
 
   test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +41,6 @@ jobs:
   # The shellenv hook must work on macOS's stock bash (3.2, the oldest we
   # support) and zsh. macos-latest ships both.
   shell:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
