@@ -12,3 +12,6 @@
 
 # Git worktrees
 .worktrees/
+
+# JetBrains IDEs
+.idea/
